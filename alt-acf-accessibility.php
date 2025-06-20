@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:     Alt & Accesibilidad Automática
- * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", sustituye aria-hidden en enlaces que envuelven imágenes por aria-label, añade etiquetas accesibles a controles de formulario y corrige encabezados vacíos.
+ * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", sustituye aria-hidden en enlaces que envuelven imágenes por aria-label, añade etiquetas accesibles a controles de formulario (incluyendo textarea) y corrige encabezados vacíos.
  * Version:         1.1
  * Author:          Antonio
  */
@@ -87,7 +87,7 @@ function aaac_filter_output( $html ) {
         $html
     );
 
-    // 3) Fix controles de formulario sin label accesible
+    // 3) Fix controles de formulario sin label accesible (inputs, selects y server-side textarea)
     $html = preg_replace_callback(
         '/<(input|textarea|select)\b[^>]*>/i',
         function( $matches ) {
@@ -150,4 +150,19 @@ function aaac_filter_output( $html ) {
     );
 
     return $html;
+}
+
+// 5) Client-side fix para textareas inyectados por JavaScript (e.g., reCAPTCHA)
+add_action( 'wp_enqueue_scripts', 'aaac_enqueue_form_label_fix' );
+function aaac_enqueue_form_label_fix() {
+    wp_register_script( 'aaac-form-label-fix', '', [], false, true );
+    wp_add_inline_script( 'aaac-form-label-fix', 
+        "document.addEventListener('DOMContentLoaded', function(){\n" .
+        "  document.querySelectorAll('textarea:not([aria-label]):not([aria-labelledby]):not([title])').forEach(function(el){\n" .
+        "    var label = el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('id') || 'Area de texto';\n" .
+        "    el.setAttribute('aria-label', label);\n" .
+        "  });\n" .
+        "});"
+    );
+    wp_enqueue_script( 'aaac-form-label-fix' );
 }
