@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:     Alt & Accesibilidad Automática
- * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", sustituye aria-hidden en enlaces que envuelven imágenes por aria-label, añade etiquetas accesibles a controles de formulario (incluyendo textarea) y corrige encabezados vacíos.
+ * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", sustituye aria-hidden en enlaces que envuelven imágenes por aria-label, añade etiquetas accesibles a controles de formulario (excepto campos ocultos como recaptcha) y corrige encabezados vacíos.
  * Version:         1.1
  * Author:          Antonio
  */
@@ -87,19 +87,18 @@ function aaac_filter_output( $html ) {
         $html
     );
 
-    // 3) Fix controles de formulario sin label accesible (inputs, selects y server-side textarea)
+    // 3) Fix controles de formulario sin label accesible (inputs, selects y textareas visibles)
     $html = preg_replace_callback(
         '/<(input|textarea|select)\b[^>]*>/i',
         function( $matches ) {
-            $tag  = $matches[0];
-            $type = '';
+            $tag = $matches[0];
+            $element = strtolower($matches[1]);
 
-            if ( preg_match( '/\btype=("|\')(\w+)(\1)/i', $tag, $t ) ) {
-                $type = strtolower( $t[2] );
+            // Omitir inputs ocultos y recaptcha (estilos display:none o class g-recaptcha-response)
+            if ( $element === 'input' && preg_match('/\btype=("|\')(hidden|submit|reset|button|image)\1/i', $tag) ) {
+                return $tag;
             }
-
-            // Omitir tipos que no requieren label
-            if ( in_array( $type, [ 'hidden', 'submit', 'reset', 'button', 'image' ] ) ) {
+            if ( $element === 'textarea' && preg_match('/\b(display\s*:\s*none)|(g-recaptcha-response)/i', $tag) ) {
                 return $tag;
             }
 
@@ -108,24 +107,25 @@ function aaac_filter_output( $html ) {
                 return $tag;
             }
 
-            $label = '';
             // Determinar texto para aria-label: placeholder > name > id > fallback textarea
+            $label = '';
             if ( preg_match( '/\bplaceholder=("|\')(.*?)\1/i', $tag, $p ) ) {
                 $label = $p[2];
             } elseif ( preg_match( '/\bname=("|\')(.*?)\1/i', $tag, $n ) ) {
                 $label = $n[2];
             } elseif ( preg_match( '/\bid=("|\')(.*?)\1/i', $tag, $i ) ) {
                 $label = $i[2];
-            } elseif ( stripos( $matches[1], 'textarea' ) !== false ) {
+            } elseif ( $element === 'textarea' ) {
                 $label = 'Área de texto';
             } else {
                 return $tag;
             }
 
             return preg_replace(
-                '/<(input|textarea|select)\b/i',
-                '<$1 aria-label="' . esc_attr( $label ) . '"',
-                $tag
+                '/<' . $element . '\b/i',
+                '<' . $element . ' aria-label="' . esc_attr( $label ) . '"',
+                $tag,
+                1
             );
         },
         $html
@@ -135,13 +135,11 @@ function aaac_filter_output( $html ) {
     $html = preg_replace_callback(
         '/<(h[1-6])\b([^>]*)>(.*?)<\/\1>/is',
         function( $matches ) {
-            $tag    = $matches[1];
-            $attrs  = $matches[2];
-            $inner  = $matches[3];
-            // Quitar <br> y espacios
-            $text = trim( strip_tags( preg_replace('/<br\s*\/?>(?i)', '', $inner ) ) );
+            $tag   = $matches[1];
+            $attrs = $matches[2];
+            $inner = $matches[3];
+            $text  = trim( strip_tags( preg_replace('/<br\s*\/?>(?i)', '', $inner ) ) );
             if ( $text === '' ) {
-                // Insertar span para lectores de pantalla
                 return "<{$tag}{$attrs}><span class=\"screen-reader-text\">Encabezado</span></{$tag}>";
             }
             return $matches[0];
@@ -159,7 +157,9 @@ function aaac_enqueue_form_label_fix() {
     wp_add_inline_script( 'aaac-form-label-fix', 
         "document.addEventListener('DOMContentLoaded', function(){\n" .
         "  document.querySelectorAll('textarea:not([aria-label]):not([aria-labelledby]):not([title])').forEach(function(el){\n" .
-        "    var label = el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('id') || 'Area de texto';\n" .
+        "    // omitir textareas ocultos (display:none)\n" .
+        "    if(window.getComputedStyle(el).display==='none') return;\n" .
+        "    var label = el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('id') || 'Área de texto';\n" .
         "    el.setAttribute('aria-label', label);\n" .
         "  });\n" .
         "});"
