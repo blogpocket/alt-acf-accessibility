@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:     Alt & Accesibilidad Automática
- * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", sustituye aria-hidden en enlaces que envuelven imágenes por aria-label, añade etiquetas accesibles a controles de formulario (excepto campos ocultos como recaptcha) y corrige encabezados vacíos.
- * Version:         1.1
+ * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", elimina aria-hidden y añade aria-label en enlaces que envuelven imágenes, añade aria-label a controles de formulario y corrige encabezados vacíos.
+ * Version:         1.1.1
  * Author:          Antonio
  */
 
@@ -14,30 +14,21 @@ function aaac_start_buffer() {
 }
 
 function aaac_filter_output( $html ) {
-    // 1) Fix imágenes sin alt o con alt vacío
+    // 1) Imágenes: inyectar alt descriptivo si falta o está vacío
     $html = preg_replace_callback(
         '/<img\s+[^>]*>/i',
         function( $matches ) {
             $img = $matches[0];
-
-            // Eliminar aria-hidden si existe en la imagen
-            $img = preg_replace( '/\saria-hidden=("|\')(.*?)\1/i', '', $img );
-
-            // Si tiene alt con contenido, lo dejamos
+            // Conservar alt si ya existe y no está vacío
             if ( preg_match( '/\balt\s*=\s*("|\')(.*?)\1/i', $img, $am ) && strlen( trim( $am[2] ) ) > 0 ) {
                 return $img;
             }
-
-            // Extraer src para obtener nombre de fichero
+            // Obtener src y nombre de fichero
             if ( preg_match( '/\bsrc=("|\')(.*?)\1/i', $img, $m ) ) {
-                $src      = $m[2];
-                $filename = basename( parse_url( $src, PHP_URL_PATH ) );
-
-                // Construir el alt
+                $filename = basename( parse_url( $m[2], PHP_URL_PATH ) );
                 $alt_text = 'Una imagen cuyo archivo se llama ' . $filename;
                 $alt_attr = esc_attr( $alt_text );
-
-                // Sustituir alt existente o insertarlo
+                // Reemplazar o insertar alt
                 if ( preg_match( '/\balt\s*=/i', $img ) ) {
                     $img = preg_replace(
                         '/\balt\s*=\s*("|\')(.*?)\1/i',
@@ -52,25 +43,20 @@ function aaac_filter_output( $html ) {
                     );
                 }
             }
-
             return $img;
         },
         $html
     );
 
-    // 2) Fix enlaces <a> que envuelven imágenes: sustituir aria-hidden por aria-label con valor del alt de la imagen
+    // 2) Enlaces <a> que envuelven imágenes: eliminar aria-hidden y añadir aria-label
     $html = preg_replace_callback(
         '/<a\b[^>]*>\s*<img[^>]*>\s*<\/a>/i',
         function( $matches ) {
             $link = $matches[0];
-
-            // Extraer alt de la imagen interna
-            if ( preg_match( '/<img\b[^>]*\balt="([^"]+)"[^>]*>/i', $link, $am ) ) {
+            if ( preg_match( '/<img\b[^>]*\balt="([^"]+)"/i', $link, $am ) ) {
                 $alt_text = $am[1];
-
-                // Eliminar aria-hidden del <a>
+                // Eliminar aria-hidden
                 $link = preg_replace( '/\saria-hidden=("|\')(.*?)\1/i', '', $link );
-
                 // Añadir aria-label si falta
                 if ( ! preg_match( '/\baria-label=/i', $link ) ) {
                     $link = preg_replace(
@@ -81,34 +67,39 @@ function aaac_filter_output( $html ) {
                     );
                 }
             }
-
             return $link;
         },
         $html
     );
 
-    // 3) Fix controles de formulario sin label accesible (inputs, selects y textareas visibles)
+    // 3) Controles de formulario: inputs, textarea, select reciben aria-label
     $html = preg_replace_callback(
         '/<(input|textarea|select)\b[^>]*>/i',
         function( $matches ) {
-            $tag = $matches[0];
-            $element = strtolower($matches[1]);
-
-            // Omitir inputs ocultos y recaptcha (estilos display:none o class g-recaptcha-response)
-            if ( $element === 'input' && preg_match('/\btype=("|\')(hidden|submit|reset|button|image)\1/i', $tag) ) {
+            $tag     = $matches[0];
+            $element = strtolower( $matches[1] );
+            $type    = '';
+            // Detectar tipo input
+            if ( $element === 'input' && preg_match( '/\btype=("|\')(\w+)\1/i', $tag, $t ) ) {
+                $type = strtolower( $t[2] );
+            }
+            // Ocultar recaptcha textarea de Google
+            if ( $element === 'textarea' && preg_match( '/\bg-recaptcha-response\b/i', $tag ) ) {
+                // Añadir aria-hidden para omitir del tree de accesibilidad
+                if ( ! preg_match( '/\baria-hidden=/i', $tag ) ) {
+                    $tag = preg_replace( '/<textarea\b/i', '<textarea aria-hidden="true"', $tag, 1 );
+                }
                 return $tag;
             }
-            if ( $element === 'textarea' && preg_match('/\b(display\s*:\s*none)|(g-recaptcha-response)/i', $tag) ) {
+            // Omitir inputs que no requieren label
+            if ( $element === 'input' && in_array( $type, [ 'hidden', 'submit', 'reset', 'button', 'image' ], true ) ) {
                 return $tag;
             }
-
-            // Si ya tiene aria-label, aria-labelledby o title, no tocar
+            // Omitir si ya tiene aria-label, aria-labelledby o title
             if ( preg_match( '/\b(aria-label|aria-labelledby|title)=/i', $tag ) ) {
                 return $tag;
             }
-
-            // Determinar texto para aria-label: placeholder > name > id > fallback textarea
-            $label = '';
+            // Determinar texto para aria-label
             if ( preg_match( '/\bplaceholder=("|\')(.*?)\1/i', $tag, $p ) ) {
                 $label = $p[2];
             } elseif ( preg_match( '/\bname=("|\')(.*?)\1/i', $tag, $n ) ) {
@@ -120,7 +111,7 @@ function aaac_filter_output( $html ) {
             } else {
                 return $tag;
             }
-
+            // Añadir aria-label
             return preg_replace(
                 '/<' . $element . '\b/i',
                 '<' . $element . ' aria-label="' . esc_attr( $label ) . '"',
@@ -131,14 +122,14 @@ function aaac_filter_output( $html ) {
         $html
     );
 
-    // 4) Fix encabezados vacíos <h1>-<h6>: añadir span oculta
+    // 4) Encabezados vacíos <h2>-<h6> con contenido anidado vacío: span oculto
     $html = preg_replace_callback(
-        '/<(h[1-6])\b([^>]*)>(.*?)<\/\1>/is',
+        '/<(h[2-6])\b([^>]*)>(.*?)<\/\1>/is',
         function( $matches ) {
             $tag   = $matches[1];
             $attrs = $matches[2];
             $inner = $matches[3];
-            $text  = trim( strip_tags( preg_replace('/<br\s*\/?>(?i)', '', $inner ) ) );
+            $text  = trim( strip_tags( preg_replace( '/<br\s*\/?>(?i)/', '', $inner ) ) );
             if ( $text === '' ) {
                 return "<{$tag}{$attrs}><span class=\"screen-reader-text\">Encabezado</span></{$tag}>";
             }
@@ -148,21 +139,4 @@ function aaac_filter_output( $html ) {
     );
 
     return $html;
-}
-
-// 5) Client-side fix para textareas inyectados por JavaScript (e.g., reCAPTCHA)
-add_action( 'wp_enqueue_scripts', 'aaac_enqueue_form_label_fix' );
-function aaac_enqueue_form_label_fix() {
-    wp_register_script( 'aaac-form-label-fix', '', [], false, true );
-    wp_add_inline_script( 'aaac-form-label-fix', 
-        "document.addEventListener('DOMContentLoaded', function(){\n" .
-        "  document.querySelectorAll('textarea:not([aria-label]):not([aria-labelledby]):not([title])').forEach(function(el){\n" .
-        "    // omitir textareas ocultos (display:none)\n" .
-        "    if(window.getComputedStyle(el).display==='none') return;\n" .
-        "    var label = el.getAttribute('placeholder') || el.getAttribute('name') || el.getAttribute('id') || 'Área de texto';\n" .
-        "    el.setAttribute('aria-label', label);\n" .
-        "  });\n" .
-        "});"
-    );
-    wp_enqueue_script( 'aaac-form-label-fix' );
 }
