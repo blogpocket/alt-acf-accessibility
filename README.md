@@ -1,7 +1,7 @@
 # Alt & Accesibilidad Automática
 
-**Version:** 1.1.1  
-**Author:** Antonio Cambronero (Blogpocket.com) 
+**Versión:** 1.1.4  
+**Autor:** Antonio Cambronero (Blogpocket.com)  
 
 ## Descripción
 
@@ -12,6 +12,7 @@ Este plugin mejora la accesibilidad de tu sitio WordPress de forma automática:
    alt="Una imagen cuyo archivo se llama <nombre-del-archivo>"
    ```
 2. **Enlaces** (`<a>`) que envuelven imágenes:
+   - Se elimina cualquier texto de diagnóstico `Linked image missing alternative text`
    - Se elimina cualquier `aria-hidden`
    - Se añade `aria-label="<texto del alt>"`
 3. **Controles de formulario** (`<input>`, `<textarea>`, `<select>`):
@@ -21,7 +22,9 @@ Este plugin mejora la accesibilidad de tu sitio WordPress de forma automática:
    ```html
    <span class="screen-reader-text">Encabezado</span>
    ```
-5. **Fallback JS** para `<img>` dinámicas sin `alt` (incluye imágenes insertadas tras el filtrado PHP).
+5. **Fallback JS**:
+   - Para `<img>` dinámicas sin `alt`
+   - Para enlaces con imágenes que contengan texto de diagnóstico: elimina texto, limpia nodos de texto y añade `aria-label`
 
 ## Instalación
 
@@ -34,16 +37,14 @@ Al activarlo, el plugin filtrará automáticamente el HTML en el frontend y apli
 
 ## Pruebas
 
-Antes de usar este plugin en una instalación real o de producción, pruébalo en un entorno de test. Por favor, si detectas
-algún fallo o error, comúnicalo al autor del plugin.
+Antes de usar este plugin en una instalación real o de producción, pruébalo en un entorno de test. Por favor, si detectas algún fallo o error, comunícalo al autor del plugin.
 
-## Changelog
+## Registro de cambios
 
-### 1.1.1
-- Versión inicial con inyección de atributos `alt` y `aria-label`.
-- Corrección de encabezados vacíos.
-- Añadido fallback JS para imágenes dinámicas sin `alt`.
+### 1.1.4
+* Fallback JS para enlaces con imágenes: limpia texto de diagnóstico y añade `aria-label`.
+* Mantiene inyección de atributos `alt`, `aria-label` en formularios, encabezados vacíos y fallback JS para imágenes dinámicas.
 
-## License
+## Licencia
 
 Este plugin está licenciado bajo GPLv2 o superior.
