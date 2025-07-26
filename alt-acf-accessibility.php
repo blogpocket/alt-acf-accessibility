@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name:     Alt & Accesibilidad Automática
- * Description:     Añade alt a imágenes sin él o con alt vacío usando "Una imagen cuyo archivo se llama <nombre>", elimina aria-hidden y añade aria-label en enlaces que envuelven imágenes, añade aria-label a controles de formulario y corrige encabezados vacíos.
+ * Description:     Versión 1.1.1 – Inyección de alt descriptivo en imágenes, aria-label en enlaces de imágenes, aria-label en formularios y corrección de encabezados vacíos.
  * Version:         1.1.1
  * Author:          Antonio
  */
@@ -14,31 +14,28 @@ function aaac_start_buffer() {
 }
 
 function aaac_filter_output( $html ) {
-    // 1) Imágenes: inyectar alt descriptivo si falta o está vacío
+    // 1) Imágenes sin alt o con alt vacío
     $html = preg_replace_callback(
         '/<img\s+[^>]*>/i',
-        function( $matches ) {
-            $img = $matches[0];
-            // Conservar alt si ya existe y no está vacío
-            if ( preg_match( '/\balt\s*=\s*("|\')(.*?)\1/i', $img, $am ) && strlen( trim( $am[2] ) ) > 0 ) {
+        function( $m ) {
+            $img = $m[0];
+            if ( preg_match('/\balt\s*=\s*(["\'])(.*?)\1/i', $img, $a) && strlen(trim($a[2]))>0 ) {
                 return $img;
             }
-            // Obtener src y nombre de fichero
-            if ( preg_match( '/\bsrc=("|\')(.*?)\1/i', $img, $m ) ) {
-                $filename = basename( parse_url( $m[2], PHP_URL_PATH ) );
-                $alt_text = 'Una imagen cuyo archivo se llama ' . $filename;
-                $alt_attr = esc_attr( $alt_text );
-                // Reemplazar o insertar alt
-                if ( preg_match( '/\balt\s*=/i', $img ) ) {
+            if ( preg_match('/\bsrc=(["\'])(.*?)\1/i', $img, $s) ) {
+                $file = basename(parse_url($s[2], PHP_URL_PATH));
+                $alt  = 'Una imagen cuyo archivo se llama ' . $file;
+                $attr = esc_attr($alt);
+                if ( preg_match('/\balt\s*=/i', $img) ) {
                     $img = preg_replace(
-                        '/\balt\s*=\s*("|\')(.*?)\1/i',
-                        'alt="' . $alt_attr . '"',
+                        '/\balt\s*=\s*(["\'])(.*?)\1/i',
+                        'alt="' . $attr . '"',
                         $img
                     );
                 } else {
                     $img = preg_replace(
                         '/<img\s+/i',
-                        '<img alt="' . $alt_attr . '" ',
+                        '<img alt="' . $attr . '" ',
                         $img
                     );
                 }
@@ -48,95 +45,86 @@ function aaac_filter_output( $html ) {
         $html
     );
 
-    // 2) Enlaces <a> que envuelven imágenes: eliminar aria-hidden y añadir aria-label
+    // 2) Enlaces que envuelven imágenes
     $html = preg_replace_callback(
-        '/<a\b[^>]*>\s*<img[^>]*>\s*<\/a>/i',
-        function( $matches ) {
-            $link = $matches[0];
-            if ( preg_match( '/<img\b[^>]*\balt="([^"]+)"/i', $link, $am ) ) {
-                $alt_text = $am[1];
-                // Eliminar aria-hidden
-                $link = preg_replace( '/\saria-hidden=("|\')(.*?)\1/i', '', $link );
-                // Añadir aria-label si falta
-                if ( ! preg_match( '/\baria-label=/i', $link ) ) {
-                    $link = preg_replace(
+        '/<a\b[^>]*>.*?<img\s+[^>]*>.*?<\/a>/is',
+        function( $m ) {
+            $a = $m[0];
+            $a = preg_replace('/\saria-hidden=(["\'])(.*?)\1/i','',$a);
+            if ( preg_match('/<img[^>]*\balt=(["\'])(.*?)\1/i',$a,$i) ) {
+                $label = esc_attr($i[2]);
+                if ( ! preg_match('/\baria-label=/i',$a) ) {
+                    $a = preg_replace(
                         '/<a\b/i',
-                        '<a aria-label="' . esc_attr( $alt_text ) . '"',
-                        $link,
+                        '<a aria-label="' . $label . '"',
+                        $a,
                         1
                     );
                 }
             }
-            return $link;
+            return $a;
         },
         $html
     );
 
-    // 3) Controles de formulario: inputs, textarea, select reciben aria-label
+    // 3) Formularios (input, textarea, select)
     $html = preg_replace_callback(
         '/<(input|textarea|select)\b[^>]*>/i',
-        function( $matches ) {
-            $tag     = $matches[0];
-            $element = strtolower( $matches[1] );
-            $type    = '';
-            // Detectar tipo input
-            if ( $element === 'input' && preg_match( '/\btype=("|\')(\w+)\1/i', $tag, $t ) ) {
-                $type = strtolower( $t[2] );
-            }
-            // Ocultar recaptcha textarea de Google
-            if ( $element === 'textarea' && preg_match( '/\bg-recaptcha-response\b/i', $tag ) ) {
-                // Añadir aria-hidden para omitir del tree de accesibilidad
-                if ( ! preg_match( '/\baria-hidden=/i', $tag ) ) {
-                    $tag = preg_replace( '/<textarea\b/i', '<textarea aria-hidden="true"', $tag, 1 );
-                }
+        function( $m ) {
+            $tag = $m[0];
+            $el  = strtolower($m[1]);
+            if ( $el==='input' && preg_match('/\btype=(["\']?)(hidden|submit|reset|button|image)\1/i',$tag) ) {
                 return $tag;
             }
-            // Omitir inputs que no requieren label
-            if ( $element === 'input' && in_array( $type, [ 'hidden', 'submit', 'reset', 'button', 'image' ], true ) ) {
+            if ( preg_match('/\b(aria-label|aria-labelledby|title)=/i',$tag) ) {
                 return $tag;
             }
-            // Omitir si ya tiene aria-label, aria-labelledby o title
-            if ( preg_match( '/\b(aria-label|aria-labelledby|title)=/i', $tag ) ) {
-                return $tag;
-            }
-            // Determinar texto para aria-label
-            if ( preg_match( '/\bplaceholder=("|\')(.*?)\1/i', $tag, $p ) ) {
+            if ( preg_match('/\bplaceholder=(["\'])(.*?)\1/i',$tag,$p) ) {
                 $label = $p[2];
-            } elseif ( preg_match( '/\bname=("|\')(.*?)\1/i', $tag, $n ) ) {
+            } elseif ( preg_match('/\bname=(["\'])(.*?)\1/i',$tag,$n) ) {
                 $label = $n[2];
-            } elseif ( preg_match( '/\bid=("|\')(.*?)\1/i', $tag, $i ) ) {
+            } elseif ( preg_match('/\bid=(["\'])(.*?)\1/i',$tag,$i) ) {
                 $label = $i[2];
-            } elseif ( $element === 'textarea' ) {
+            } elseif ( $el==='textarea' ) {
                 $label = 'Área de texto';
             } else {
                 return $tag;
             }
-            // Añadir aria-label
-            return preg_replace(
-                '/<' . $element . '\b/i',
-                '<' . $element . ' aria-label="' . esc_attr( $label ) . '"',
-                $tag,
-                1
-            );
+            $aria = 'aria-label="' . esc_attr($label) . '"';
+            return preg_replace('/<' + el + '\b/i', '<' + el + ' ' + $aria, $tag, 1);
         },
         $html
     );
 
-    // 4) Encabezados vacíos <h2>-<h6> con contenido anidado vacío: span oculto
+    // 4) Encabezados h2-h6 vacíos
     $html = preg_replace_callback(
         '/<(h[2-6])\b([^>]*)>(.*?)<\/\1>/is',
-        function( $matches ) {
-            $tag   = $matches[1];
-            $attrs = $matches[2];
-            $inner = $matches[3];
-            $text  = trim( strip_tags( preg_replace( '/<br\s*\/?>(?i)/', '', $inner ) ) );
+        function( $m ) {
+            $tag   = $m[1];
+            $attr  = $m[2];
+            $inner = $m[3];
+            $text  = trim(strip_tags(preg_replace('/<br\s*\/?/i','',$inner)));
             if ( $text === '' ) {
-                return "<{$tag}{$attrs}><span class=\"screen-reader-text\">Encabezado</span></{$tag}>";
+                return "<{$tag}{$attr}><span class=\"screen-reader-text\">Encabezado</span></{$tag}>";
             }
-            return $matches[0];
+            return $m[0];
         },
         $html
     );
 
     return $html;
 }
+// 5) Fallback JS para <img> dinámicas sin alt
+add_action( 'wp_footer', function(){
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){
+        document.querySelectorAll('img:not([alt])').forEach(function(img){
+            var src = img.getAttribute('src') || '';
+            var filename = src.split('/').pop() || 'imagen';
+            img.setAttribute('alt', 'Una imagen cuyo archivo se llama ' + filename);
+        });
+    });
+    </script>
+    <?php
+}, 100 );
