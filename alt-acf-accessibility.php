@@ -3,7 +3,7 @@
  * Plugin Name:     Alt & Accesibilidad Automática
  * Description:     Versión 1.1.1 – Inyección de alt descriptivo en imágenes, aria-label en enlaces de imágenes, aria-label en formularios y corrección de encabezados vacíos.
  * Version:         1.1.1
- * Author:          Antonio
+ * Author:          Antonio Cambronero (Blogpocket.com)
  */
 
 add_action( 'template_redirect', 'aaac_start_buffer' );
