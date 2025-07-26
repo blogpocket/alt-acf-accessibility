@@ -3,7 +3,7 @@
 **Version:** 1.1.1  
 **Author:** Antonio Cambronero (Blogpocket.com) 
 
-## Description
+## Descripción
 
 Este plugin mejora la accesibilidad de tu sitio WordPress de forma automática:
 
@@ -23,14 +23,19 @@ Este plugin mejora la accesibilidad de tu sitio WordPress de forma automática:
    ```
 5. **Fallback JS** para `<img>` dinámicas sin `alt` (incluye imágenes insertadas tras el filtrado PHP).
 
-## Installation
+## Instalación
 
 1. Sube la carpeta `alt-acf-accessibility` al directorio `/wp-content/plugins/`.
 2. Activa el plugin desde el menú **Plugins** en el Escritorio de WordPress.
 
-## Usage
+## Uso
 
 Al activarlo, el plugin filtrará automáticamente el HTML en el frontend y aplicará las mejoras de accesibilidad mencionadas.
+
+## Pruebas
+
+Antes de usar este plugin en una instalación real o de producción, pruébalo en un entorno de test. Por favor, si detectas
+algún fallo o error, comúnicalo al autor del plugin.
 
 ## Changelog
 
