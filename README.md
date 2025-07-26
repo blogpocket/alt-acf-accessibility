@@ -1,7 +1,7 @@
 # Alt & Accesibilidad Automática
 
 **Version:** 1.1.1  
-**Author:** Antonio  
+**Author:** Antonio Cambronero (Blogpocket.com) 
 
 ## Description
 
