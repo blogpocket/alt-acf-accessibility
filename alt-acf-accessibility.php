@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name:     Alt & Accesibilidad Automática
- * Description:     Versión 1.1.1 – Inyección de alt descriptivo en imágenes, aria-label en enlaces de imágenes, aria-label en formularios y corrección de encabezados vacíos.
- * Version:         1.1.1
+ * Description:     Versión 1.1.4 – Inyección de alt descriptivo en imágenes, aria-label en enlaces de imágenes, corrección de enlaces con imágenes dinámicas, aria-label en formularios y corrección de encabezados vacíos. Incluye fallback JS.
+ * Version:         1.1.4
  * Author:          Antonio Cambronero (Blogpocket.com)
  */
 
@@ -45,13 +45,16 @@ function aaac_filter_output( $html ) {
         $html
     );
 
-    // 2) Enlaces que envuelven imágenes
+    // 2) Enlaces que envuelven imágenes: eliminar texto de diagnóstico, quitar aria-hidden y añadir aria-label
     $html = preg_replace_callback(
         '/<a\b[^>]*>.*?<img\s+[^>]*>.*?<\/a>/is',
         function( $m ) {
             $a = $m[0];
+            // Eliminar texto de diagnóstico
+            $a = preg_replace('/>\s*Linked image missing alternative text\s*/i', '>', $a);
+            // Eliminar aria-hidden
             $a = preg_replace('/\saria-hidden=(["\'])(.*?)\1/i','',$a);
-            if ( preg_match('/<img[^>]*\balt=(["\'])(.*?)\1/i',$a,$i) ) {
+            if ( preg_match('/<img[^>]*\balt=(["\'])(.*?)\1/i', $a, $i) ) {
                 $label = esc_attr($i[2]);
                 if ( ! preg_match('/\baria-label=/i',$a) ) {
                     $a = preg_replace(
@@ -91,7 +94,12 @@ function aaac_filter_output( $html ) {
                 return $tag;
             }
             $aria = 'aria-label="' . esc_attr($label) . '"';
-            return preg_replace('/<' + el + '\b/i', '<' + el + ' ' + $aria, $tag, 1);
+            return preg_replace(
+                '/<' . $el . '\b/i',
+                '<' . $el . ' ' . $aria,
+                $tag,
+                1
+            );
         },
         $html
     );
@@ -114,6 +122,7 @@ function aaac_filter_output( $html ) {
 
     return $html;
 }
+
 // 5) Fallback JS para <img> dinámicas sin alt
 add_action( 'wp_footer', function(){
     ?>
@@ -123,6 +132,31 @@ add_action( 'wp_footer', function(){
             var src = img.getAttribute('src') || '';
             var filename = src.split('/').pop() || 'imagen';
             img.setAttribute('alt', 'Una imagen cuyo archivo se llama ' + filename);
+        });
+    });
+    </script>
+    <?php
+}, 100 );
+
+// 6) Fallback JS para enlaces con imagen: limpiar texto y añadir aria-label
+add_action( 'wp_footer', function(){
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){
+        document.querySelectorAll('a').forEach(function(a){
+            var img = a.querySelector('img');
+            if(!img) return;
+            var text = a.textContent.trim();
+            if(text === '' || /Linked image missing alternative text/i.test(text)){
+                // remove text nodes
+                Array.from(a.childNodes).forEach(function(n){
+                    if(n.nodeType === 3) a.removeChild(n);
+                });
+                var alt = img.getAttribute('alt') || '';
+                if(alt){
+                    a.setAttribute('aria-label', alt);
+                }
+            }
         });
     });
     </script>
